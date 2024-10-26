@@ -3,16 +3,18 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "../StreamingGoFundMe.sol";
+import "../UniversityRegistry.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@sablier/contracts/sablier/ISablierV2LockupLinear.sol";
 
 contract StreamingGoFundMeTest is Test {
     StreamingGoFundMe public gofundme;
+    UniversityRegistry public registry;
     IERC20 public usdc;
     
     address public admin = address(1);
-    address public charityA = address(2);
-    address public charityB = address(3);
+    address public uniA = address(2);
+    address public uniB = address(3);
     address public donor = address(4);
     
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -25,21 +27,26 @@ contract StreamingGoFundMeTest is Test {
         
         vm.startPrank(admin);
         
-        // Setup recipients
-        address[] memory recipients = new address[](2);
-        recipients[0] = charityA;
-        recipients[1] = charityB;
+        // Deploy registry and add universities
+        registry = new UniversityRegistry(admin);
+        registry.addUniversity("UNI_A", "University A", uniA);
+        registry.addUniversity("UNI_B", "University B", uniB);
+        
+        string[] memory symbols = new string[](2);
+        symbols[0] = "UNI_A";
+        symbols[1] = "UNI_B";
         
         uint256[] memory allocations = new uint256[](2);
         allocations[0] = 5000; // 50%
         allocations[1] = 5000; // 50%
         
-        // Deploy contract
+        // Deploy main contract
         gofundme = new StreamingGoFundMe(
             USDC,
             admin,
+            address(registry),
             SABLIER,
-            recipients,
+            symbols,
             allocations
         );
         
@@ -51,32 +58,38 @@ contract StreamingGoFundMeTest is Test {
         vm.stopPrank();
     }
 
-    function testBasicDonation() public {
+    function testDonationAndStreaming() public {
         vm.startPrank(donor);
-        
-        // Approve and donate
         usdc.approve(address(gofundme), DONATION_AMOUNT);
         gofundme.donate(DONATION_AMOUNT);
-        
-        // Basic checks
         assertEq(gofundme.totalRaised(), DONATION_AMOUNT);
+        vm.stopPrank();
         
+        vm.startPrank(admin);
+        gofundme.startStreaming();
+        assertTrue(gofundme.isStreaming());
         vm.stopPrank();
     }
 
-    function testStartStreaming() public {
-        // Make donation first
-        vm.startPrank(donor);
-        usdc.approve(address(gofundme), DONATION_AMOUNT);
-        gofundme.donate(DONATION_AMOUNT);
-        vm.stopPrank();
-        
-        // Start streaming
+    function testInvalidUniversity() public {
         vm.startPrank(admin);
-        gofundme.startStreaming();
-        vm.stopPrank();
         
-        // Verify streaming started
-        assertTrue(gofundme.isStreaming());
+        string[] memory symbols = new string[](1);
+        symbols[0] = "INVALID_UNI";
+        
+        uint256[] memory allocations = new uint256[](1);
+        allocations[0] = 10000;
+        
+        vm.expectRevert();
+        new StreamingGoFundMe(
+            USDC,
+            admin,
+            address(registry),
+            SABLIER,
+            symbols,
+            allocations
+        );
+        
+        vm.stopPrank();
     }
 }
