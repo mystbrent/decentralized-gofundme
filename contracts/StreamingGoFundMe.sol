@@ -8,28 +8,48 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./sablier/DataTypes.sol";
 import "./sablier/ISablierV2LockupLinear.sol";
 
-contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
+/**
+ * @title StreamingGoFundMe
+ * @notice A decentralized fundraising platform that accepts stablecoin donations and 
+ * streams funds to recipients using Sablier protocol
+ * @dev Implements donation collection, fund streaming, voting mechanism, and refund functionality
+ */
+contract StreamingGoFundMe is ReentrancyGuard, Ownable {
     using SafeMath for uint256;
 
+    /**
+     * @notice Stores information about a fund recipient
+     * @param wallet The recipient's address
+     * @param allocation Percentage allocation (in basis points, e.g., 5000 = 50%)
+     * @param streamId Sablier stream ID for this recipient
+     */
     struct Recipient {
         address wallet;
         uint256 allocation;
         uint256 streamId;
     }
 
+    /**
+     * @notice Stores information about a donor
+     * @param amount Total amount donated
+     * @param hasVoted Whether the donor has voted to cancel streams
+     */
     struct Donor {
         uint256 amount;
         bool hasVoted;
     }
 
-    uint256 private constant PLATFORM_FEE = 100;
-    uint256 private constant VOTE_THRESHOLD = 5000;
+    // Constants
+    uint256 private constant PLATFORM_FEE = 100; // 1% fee in basis points
+    uint256 private constant VOTE_THRESHOLD = 5000; // 50% voting threshold in basis points
     uint40 private constant STREAM_DURATION = 30 days;
 
+    // Core contract references
     IERC20 public immutable stablecoin;
     address public immutable platformWallet;
     ISablierV2LockupLinear public immutable sablier;
 
+    // State variables
     mapping(address => Donor) public donors;
     address[] public donorList;
     Recipient[] public recipients;
@@ -38,12 +58,37 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
     bool public isStreaming;
     bool public isCancelled;
 
+    // Events for core functionality
     event DonationReceived(address indexed donor, uint256 amount);
     event StreamStarted(address indexed recipient, uint256 streamId, uint256 amount);
     event VoteCast(address indexed donor, uint256 weight);
     event StreamsCancelled();
     event RefundIssued(address indexed donor, uint256 amount);
 
+    // Additional events for debugging
+    event StreamCancellationInitiated(uint256 totalVotingWeight);
+    event StreamCancellationAttempt(uint256 indexed streamId, bool success);
+    event VestedAmountCalculated(uint256 indexed streamId, uint256 vestedAmount);
+    event RefundCalculation(
+        uint256 initialBalance,
+        uint256 finalBalance,
+        uint256 totalVested,
+        uint256 refundableAmount
+    );
+    event DonorRefundCalculated(
+        address indexed donor, 
+        uint256 donationAmount, 
+        uint256 refundAmount
+    );
+
+    /**
+     * @notice Contract constructor
+     * @param _stablecoin Address of the stablecoin contract
+     * @param _platformWallet Address to receive platform fees
+     * @param _sablier Address of Sablier V2 contract
+     * @param _recipients Array of recipient addresses
+     * @param _allocations Array of recipient allocations (in basis points)
+     */
     constructor(
         address _stablecoin,
         address _platformWallet,
@@ -74,11 +119,20 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
         require(totalAllocation == 10000, "Total allocation must be 100%");
     }
 
+    /**
+     * @notice Calculates a donor's voting weight in basis points
+     * @param donor Address of the donor
+     * @return uint256 Voting weight in basis points (e.g., 1000 = 10%)
+     */
     function getVotingWeight(address donor) public view returns (uint256) {
         if (totalRaised == 0) return 0;
         return donors[donor].amount.mul(10000).div(totalRaised);
     }
 
+    /**
+     * @notice Allows users to donate stablecoins to the fund
+     * @param amount Amount of stablecoins to donate
+     */
     function donate(uint256 amount) external nonReentrant {
         require(!isStreaming && !isCancelled, "Fund not accepting donations");
         require(amount > 0, "Invalid amount");
@@ -94,6 +148,10 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
         emit DonationReceived(msg.sender, amount);
     }
 
+    /**
+     * @notice Initiates streaming of funds to recipients
+     * @dev Only callable by contract owner
+     */
     function startStreaming() external onlyOwner nonReentrant {
         require(!isStreaming && !isCancelled, "Invalid state");
         require(totalRaised > 0, "No funds raised");
@@ -131,6 +189,10 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
         isStreaming = true;
     }
 
+    /**
+     * @notice Allows donors to vote for cancelling streams
+     * @dev Automatically triggers cancellation if threshold is reached
+     */
     function vote() external nonReentrant {
         require(isStreaming && !isCancelled, "Invalid state");
         require(donors[msg.sender].amount > 0, "Not a donor");
@@ -143,64 +205,88 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
         emit VoteCast(msg.sender, weight);
 
         if (totalVotingWeight >= VOTE_THRESHOLD) {
+            emit StreamCancellationInitiated(totalVotingWeight);
             _cancelStreams();
         }
     }
 
+    /**
+     * @notice Internal function to handle stream cancellation and refunds
+     * @dev Cancels all active streams and distributes refunds proportionally
+     */
     function _cancelStreams() private {
-    require(isStreaming && !isCancelled, "Invalid state");
+        require(isStreaming && !isCancelled, "Invalid state");
 
-    // First mark as cancelled to prevent reentrancy
-    isCancelled = true;
-    isStreaming = false;
+        isCancelled = true;
+        isStreaming = false;
 
-    uint256 initialBalance = stablecoin.balanceOf(address(this));
-    uint256 totalVested = 0;
-    
-    // First, calculate total vested amount
-    for (uint i = 0; i < recipients.length; i++) {
-        if (recipients[i].streamId > 0) {
-            try sablier.getStream(recipients[i].streamId) returns (LockupLinear.StreamLL memory stream) {
-                totalVested += uint256(stream.amounts.withdrawn);
-            } catch {
-                continue;
-            }
-        }
-    }
-
-    // Now cancel each stream
-    for (uint i = 0; i < recipients.length; i++) {
-        if (recipients[i].streamId > 0) {
-            try sablier.cancel(recipients[i].streamId) {
-                // Stream cancelled successfully
-            } catch {
-                continue;
-            }
-        }
-    }
-
-    emit StreamsCancelled();
-
-    // Calculate actual refundable amount by subtracting vested amount
-    uint256 finalBalance = stablecoin.balanceOf(address(this));
-    uint256 refundableAmount = finalBalance - initialBalance;
-
-    // Only process refunds if we have something to refund
-    if (refundableAmount > 0) {
-        // Distribute refunds proportionally to donors
-        for (uint i = 0; i < donorList.length; i++) {
-            address donor = donorList[i];
-            if (donors[donor].amount > 0) {
-                uint256 refundAmount = refundableAmount.mul(donors[donor].amount).div(totalRaised);
-                if (refundAmount > 0) {
-                    require(stablecoin.transfer(donor, refundAmount), "Refund failed");
-                    emit RefundIssued(donor, refundAmount);
+        uint256 initialBalance = stablecoin.balanceOf(address(this));
+        uint256 totalVested = 0;
+        
+        // Calculate total vested amount
+        for (uint i = 0; i < recipients.length; i++) {
+            if (recipients[i].streamId > 0) {
+                try sablier.getStream(recipients[i].streamId) returns (LockupLinear.StreamLL memory stream) {
+                    uint256 vestedAmount = uint256(stream.amounts.withdrawn);
+                    totalVested = totalVested.add(vestedAmount);
+                    emit VestedAmountCalculated(recipients[i].streamId, vestedAmount);
+                } catch {
+                    emit StreamCancellationAttempt(recipients[i].streamId, false);
+                    continue;
                 }
             }
         }
+
+        // Cancel streams
+        for (uint i = 0; i < recipients.length; i++) {
+            if (recipients[i].streamId > 0) {
+                try sablier.cancel(recipients[i].streamId) {
+                    emit StreamCancellationAttempt(recipients[i].streamId, true);
+                } catch {
+                    emit StreamCancellationAttempt(recipients[i].streamId, false);
+                    continue;
+                }
+            }
+        }
+
+        emit StreamsCancelled();
+
+        uint256 finalBalance = stablecoin.balanceOf(address(this));
+        uint256 refundableAmount = finalBalance.sub(initialBalance);
+
+        emit RefundCalculation(
+            initialBalance,
+            finalBalance,
+            totalVested,
+            refundableAmount
+        );
+
+        if (refundableAmount > 0) {
+            for (uint i = 0; i < donorList.length; i++) {
+                address donor = donorList[i];
+                if (donors[donor].amount > 0) {
+                    uint256 refundAmount = refundableAmount.mul(donors[donor].amount).div(totalRaised);
+                    
+                    emit DonorRefundCalculated(
+                        donor,
+                        donors[donor].amount,
+                        refundAmount
+                    );
+
+                    if (refundAmount > 0) {
+                        require(stablecoin.transfer(donor, refundAmount), "Refund failed");
+                        emit RefundIssued(donor, refundAmount);
+                    }
+                }
+            }
         }
     }
 
+    /**
+     * @notice Allows owner to rescue accidentally sent tokens
+     * @param token Address of the token to rescue
+     * @dev Cannot be used to rescue the stablecoin used for streaming
+     */
     function rescueToken(IERC20 token) external onlyOwner {
         require(address(token) != address(stablecoin), "Cannot rescue stream token");
         uint256 balance = token.balanceOf(address(this));

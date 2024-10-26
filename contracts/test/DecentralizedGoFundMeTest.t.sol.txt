@@ -2,13 +2,13 @@
 pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../DecentralizedGoFundMe.sol";
+import "../StreamingGoFundMe.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@sablier/contracts/sablier/ISablierV2LockupLinear.sol";
 import "@sablier/contracts/sablier/DataTypes.sol";
 
-contract DecentralizedGoFundMeTest is Test {
-    DecentralizedGoFundMe public gofundme;
+contract StreamingGoFundMeTest is Test {
+    StreamingGoFundMe public gofundme;
     IERC20 public usdc;
     ISablierV2LockupLinear public sablier;
     
