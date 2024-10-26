@@ -39,7 +39,7 @@ class GoFundMeREPL {
     // Connect to existing contracts on fork
     this.stablecoin = await ethers.getContractAt("IERC20", USDC);
     this.sablier = await ethers.getContractAt("ISablierV2LockupLinear", SABLIER_V2_LOCKUP_LINEAR);
-    
+
     // Fund test accounts
     for (let i = 0; i < this.testAccounts.length; i++) {
       // Fund with ETH for gas
@@ -49,10 +49,10 @@ class GoFundMeREPL {
       });
 
       // Fund with different USDC amounts based on role
-      const usdcAmount = i === 2 
+      const usdcAmount = i === 2
         ? ethers.utils.parseUnits("100000", 6)  // Major donor: 100k USDC
         : ethers.utils.parseUnits("10000", 6);  // Others: 10k USDC
-        
+
       await this.fundAccountWithUSDC(this.testAccounts[i].address, usdcAmount);
     }
 
@@ -71,7 +71,7 @@ class GoFundMeREPL {
 
     await this.contract.deployed();
     console.log(`✅ Contract deployed to: ${this.contract.address}\n`);
-    
+
     return this;
   }
 
@@ -120,17 +120,40 @@ class GoFundMeREPL {
     // 3. Start streaming
     console.log("\n🌊 Initiating fund streaming...");
     await this.startStreaming();
-    
+
     // 4. Show stream details
     console.log("\n🔍 Stream Details:");
     for (let i = 0; i < 2; i++) {
       const recipient = await this.contract.recipients(i);
       if (recipient.streamId.toString() !== "0") {
-        const stream = await this.sablier.getStream(recipient.streamId);
-        console.log(`\nCharity ${i === 0 ? 'A' : 'B'}:`);
-        console.log(`- Total Amount: ${this.fmt(stream.amounts.deposited)} USDC`);
-        console.log(`- Start Time: ${new Date(stream.startTime * 1000).toLocaleString()}`);
-        console.log(`- End Time: ${new Date(stream.endTime * 1000).toLocaleString()}`);
+        try {
+          // Get stream details
+          const stream = await this.sablier.getStream(recipient.streamId);
+          const timestamps = await this.sablier.getTimestamps(recipient.streamId);
+
+          console.log(`\nCharity ${i === 0 ? 'A' : 'B'}:`);
+          console.log(`Stream ID: ${recipient.streamId}`);
+          console.log(`Recipient: ${stream.recipient}`);
+          console.log(`Total Amount: ${this.fmt(stream.amounts.deposited)} USDC`);
+          console.log(`Withdrawn Amount: ${this.fmt(stream.amounts.withdrawn)} USDC`);
+          console.log(`Start Time: ${new Date(timestamps.start * 1000).toLocaleString()}`);
+          console.log(`End Time: ${new Date(timestamps.end * 1000).toLocaleString()}`);
+          if (timestamps.cliff > 0) {
+            console.log(`Cliff Time: ${new Date(timestamps.cliff * 1000).toLocaleString()}`);
+          }
+          console.log(`Status: ${stream.wasCanceled ? 'Cancelled' : (stream.isDepleted ? 'Depleted' : 'Active')}`);
+        } catch (error) {
+          console.log(`⚠️ Error fetching stream ${recipient.streamId}:`, error.message);
+
+          // Additional debugging
+          console.log('\nTrying to get cliff time...');
+          try {
+            const cliffTime = await this.sablier.getCliffTime(recipient.streamId);
+            console.log('Cliff time:', cliffTime);
+          } catch (e) {
+            console.log('Failed to get cliff time:', e.message);
+          }
+        }
       }
     }
 
@@ -165,8 +188,8 @@ class GoFundMeREPL {
 
     await this.stablecoin.connect(donor).approve(this.contract.address, donationAmount);
     await this.contract.connect(donor).donate(donationAmount);
-    
-    console.log(`Processed ${amount} USDC donation from ${accountIndex === 2 ? 'Major Donor' : `Small Donor ${accountIndex-2}`}`);
+
+    console.log(`Processed ${amount} USDC donation from ${accountIndex === 2 ? 'Major Donor' : `Small Donor ${accountIndex - 2}`}`);
   }
 
   async startStreaming() {
@@ -195,18 +218,51 @@ class GoFundMeREPL {
   async getBalance(address) {
     return this.fmt(await this.stablecoin.balanceOf(address));
   }
+
+  // Add helper function to get comprehensive stream info
+  async getStreamDetails(streamId) {
+    try {
+      const [stream, timestamps] = await Promise.all([
+        this.sablier.getStream(streamId),
+        this.sablier.getTimestamps(streamId)
+      ]);
+
+      return {
+        recipient: stream.recipient,
+        amounts: {
+          deposited: this.fmt(stream.amounts.deposited),
+          withdrawn: this.fmt(stream.amounts.withdrawn),
+          refunded: this.fmt(stream.amounts.refunded)
+        },
+        timestamps: {
+          start: new Date(timestamps.start * 1000).toLocaleString(),
+          cliff: timestamps.cliff ? new Date(timestamps.cliff * 1000).toLocaleString() : 'No cliff',
+          end: new Date(timestamps.end * 1000).toLocaleString()
+        },
+        status: {
+          isCancelable: stream.isCancelable,
+          wasCanceled: stream.wasCanceled,
+          isDepleted: stream.isDepleted,
+          isTransferable: stream.isTransferable
+        }
+      };
+    } catch (error) {
+      console.error(`Error fetching stream ${streamId}:`, error);
+      return null;
+    }
+  }
 }
 
 async function main() {
   const repl = await new GoFundMeREPL().initialize();
-  
+
   // Run the demonstration
   await repl.demonstrateFullFlow();
-  
+
   // Add to global scope for manual interaction
   global.repl = repl;
   global.ethers = ethers;
-  
+
   console.log(`
     🛠️ REPL Ready for Manual Testing 🛠️
     
