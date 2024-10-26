@@ -12,3 +12,4 @@ remappings = [
 
 [rpc_endpoints]
 tenderly = "${TENDERLY_RPC_URL}"
+ethereum = "${ETH_RPC_URL}"
