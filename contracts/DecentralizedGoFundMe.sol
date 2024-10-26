@@ -148,35 +148,56 @@ contract DecentralizedGoFundMe is ReentrancyGuard, Ownable {
     }
 
     function _cancelStreams() private {
-        require(isStreaming && !isCancelled, "Invalid state");
+    require(isStreaming && !isCancelled, "Invalid state");
 
-        uint256 totalRefunded = 0;
-        for (uint i = 0; i < recipients.length; i++) {
-            if (recipients[i].streamId > 0) {
-                LockupLinear.StreamLL memory stream = sablier.getStream(recipients[i].streamId);
-                uint256 depositedAmount = uint256(stream.amounts.deposited);
-                uint256 withdrawnAmount = uint256(stream.amounts.withdrawn);
-                uint256 refundableAmount = depositedAmount - withdrawnAmount;
+    // First mark as cancelled to prevent reentrancy
+    isCancelled = true;
+    isStreaming = false;
 
-                sablier.cancel(recipients[i].streamId);
-                totalRefunded = totalRefunded.add(refundableAmount);
+    uint256 initialBalance = stablecoin.balanceOf(address(this));
+    uint256 totalVested = 0;
+    
+    // First, calculate total vested amount
+    for (uint i = 0; i < recipients.length; i++) {
+        if (recipients[i].streamId > 0) {
+            try sablier.getStream(recipients[i].streamId) returns (LockupLinear.StreamLL memory stream) {
+                totalVested += uint256(stream.amounts.withdrawn);
+            } catch {
+                continue;
             }
         }
+    }
 
-        isCancelled = true;
-        isStreaming = false;
+    // Now cancel each stream
+    for (uint i = 0; i < recipients.length; i++) {
+        if (recipients[i].streamId > 0) {
+            try sablier.cancel(recipients[i].streamId) {
+                // Stream cancelled successfully
+            } catch {
+                continue;
+            }
+        }
+    }
 
-        emit StreamsCancelled();
+    emit StreamsCancelled();
 
+    // Calculate actual refundable amount by subtracting vested amount
+    uint256 finalBalance = stablecoin.balanceOf(address(this));
+    uint256 refundableAmount = finalBalance - initialBalance;
+
+    // Only process refunds if we have something to refund
+    if (refundableAmount > 0) {
+        // Distribute refunds proportionally to donors
         for (uint i = 0; i < donorList.length; i++) {
             address donor = donorList[i];
             if (donors[donor].amount > 0) {
-                uint256 refundAmount = totalRefunded.mul(donors[donor].amount).div(totalRaised);
+                uint256 refundAmount = refundableAmount.mul(donors[donor].amount).div(totalRaised);
                 if (refundAmount > 0) {
                     require(stablecoin.transfer(donor, refundAmount), "Refund failed");
                     emit RefundIssued(donor, refundAmount);
                 }
             }
+        }
         }
     }
 
