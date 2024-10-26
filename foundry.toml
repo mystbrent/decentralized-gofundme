@@ -1,0 +1,14 @@
+[profile.default]
+src = "contracts"
+out = "out"
+libs = ["lib"]
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@prb/math/=lib/prb-math/",
+    "hardhat/=lib/hardhat/",
+    "@sablier/contracts/sablier/=contracts/sablier/"
+]
+
+[rpc_endpoints]
+tenderly = "${TENDERLY_RPC_URL}"
