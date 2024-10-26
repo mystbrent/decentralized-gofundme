@@ -31,7 +31,7 @@ class GoFundMeREPL {
     console.log('owner:', owner.address)
 
     // Create 20 test accounts
-    this.testAccounts = Array(20).fill().map(() => Wallet.createRandom().connect(ethers.provider));
+    this.testAccounts = Array(2).fill().map(() => Wallet.createRandom().connect(ethers.provider));
 
     console.log("Created test accounts:");
     this.testAccounts.forEach((account, index) => {
