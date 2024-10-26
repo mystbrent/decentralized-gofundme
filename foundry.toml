@@ -2,6 +2,12 @@
 src = "contracts"
 out = "out"
 libs = ["lib"]
+# Add these lines to disable forking by default
+fork_block_number = null
+no_match_test = "fork"
+# Add script location
+script = "contracts/scripts"
+# Keep your existing remappings
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",

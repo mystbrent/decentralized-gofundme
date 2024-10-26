@@ -2,30 +2,33 @@
 pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
-import "../src/SimpleGoFundMe.sol";
-import "../src/UniversityRegistry.sol";
+import "../SimpleGoFundMe.sol";
+import "../UniversityRegistry.sol";
 
 contract DeploySimpleGoFundMe is Script {
-    // Configuration
-    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    // Configuration - using Sepolia USDC for example
+    address constant USDC = 0xda9d4f9b69ac6C22e444eD9aF0CfC043b7a7f53f;
     address public platformWallet;
-
+    
     function setUp() public {
         // Set platform wallet to script runner
         platformWallet = msg.sender;
     }
 
     function run() public {
+        // Get private key from environment
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        
+        // Start broadcasting transactions
         vm.startBroadcast(deployerPrivateKey);
 
         // 1. Deploy University Registry
         UniversityRegistry registry = new UniversityRegistry(msg.sender);
         console.log("UniversityRegistry deployed at:", address(registry));
 
-        // 2. Add Universities
-        registry.addUniversity("UNI_A", "University A", 0x1234...); // Replace with actual address
-        registry.addUniversity("UNI_B", "University B", 0x5678...); // Replace with actual address
+        // 2. Add Universities (using msg.sender as placeholder - replace with real addresses)
+        registry.addUniversity("UNI_A", "University A", msg.sender);
+        registry.addUniversity("UNI_B", "University B", msg.sender);
         console.log("Universities added to registry");
 
         // 3. Setup GoFundMe parameters
