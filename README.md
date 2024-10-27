@@ -1,90 +1,105 @@
-# Hardhat Boilerplate
+# Decentralized GoFundMe for Universities
 
-This repository contains a sample project that you can use as the starting point
-for your Ethereum project. It's also a great fit for learning the basics of
-smart contract development.
+This project implements a decentralized fundraising platform for universities using smart contracts on the Ethereum blockchain. It includes two main implementations: SimpleGoFundMe and StreamingGoFundMe, along with a UniversityRegistry contract for managing verified university addresses.
 
-This project is intended to be used with the
-[Hardhat Beginners Tutorial](https://hardhat.org/tutorial), but you should be
-able to follow it by yourself by reading the README and exploring its
-`contracts`, `tests`, `scripts` and `frontend` directories.
+## Project Structure
 
-## Quick start
+- `contracts/`:
+  - `SimpleGoFundMe.sol`: A basic implementation with a two-phase distribution model.
+  - `StreamingGoFundMe.sol`: An advanced implementation using the Sablier protocol for streaming funds.
+  - `UniversityRegistry.sol`: A registry for managing verified university addresses.
+- `contracts/test/`:
+  - `SimpleGoFundMe.t.sol`: Tests for the SimpleGoFundMe contract.
+  - `StreamingGoFundMe.t.sol`: Tests for the StreamingGoFundMe contract.
+- `scripts/`:
+  - `DeploySimpleGoFundMe.s.sol`: Deployment script for SimpleGoFundMe and UniversityRegistry.
 
-The first things you need to do are cloning this repository and installing its
-dependencies:
+## Key Features
 
-```sh
-git clone https://github.com/NomicFoundation/hardhat-boilerplate.git
-cd hardhat-boilerplate
-npm install
+- Stablecoin donations
+- University verification through a registry
+- Two-phase distribution model (SimpleGoFundMe)
+- Streaming funds using Sablier protocol (StreamingGoFundMe)
+- Voting mechanism for fund cancellation
+- Platform fee collection
+
+## Prerequisites
+
+- [Foundry](https://book.getfoundry.sh/getting-started/installation.html)
+- [Node.js](https://nodejs.org/) and npm (for running scripts)
+
+## Setup
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/your-username/defi-gofundme.git
+   cd defi-gofundme
+   ```
+
+2. Install dependencies:
+   ```
+   forge install
+   ```
+
+3. Set up environment variables:
+   Create a `.env` file in the project root and add the following:
+   ```
+   PRIVATE_KEY=your_private_key_here
+   ETH_RPC_URL=your_ethereum_rpc_url_here
+   ```
+
+## Running Tests
+
+To run the Foundry tests:
+
+```
+forge test
 ```
 
-Once installed, let's run Hardhat's testing network:
+To run tests with verbose output:
 
-```sh
-npx hardhat node
+```
+forge test -vv
 ```
 
-Then, on a new terminal, go to the repository's root folder and run this to
-deploy your contract:
+To run a specific test file:
 
-```sh
-npx hardhat run scripts/deploy.js --network localhost
+```
+forge test --match-path contracts/test/SimpleGoFundMe.t.sol
 ```
 
-Finally, we can run the frontend with:
+## Deployment
 
-```sh
-cd frontend
-npm install
-npm start
+To deploy the SimpleGoFundMe contract and UniversityRegistry:
+
+```
+forge script scripts/DeploySimpleGoFundMe.s.sol --rpc-url $ETH_RPC_URL --broadcast --verify -vvvv
 ```
 
-Open [http://localhost:3000/](http://localhost:3000/) to see your Dapp. You will
-need to have [Coinbase Wallet](https://www.coinbase.com/wallet) or [Metamask](https://metamask.io) installed and listening to
-`localhost 8545`.
+Make sure to replace `$ETH_RPC_URL` with your actual Ethereum RPC URL or use the one from your `.env` file.
 
-## User Guide
+## Contract Interactions
 
-You can find detailed instructions on using this repository and many tips in [its documentation](https://hardhat.org/tutorial).
+After deployment, you can interact with the contracts using tools like `cast` or by writing additional scripts.
 
-- [Writing and compiling contracts](https://hardhat.org/tutorial/writing-and-compiling-contracts/)
-- [Setting up the environment](https://hardhat.org/tutorial/setting-up-the-environment/)
-- [Testing Contracts](https://hardhat.org/tutorial/testing-contracts/)
-- [Setting up your wallet](https://hardhat.org/tutorial/boilerplate-project#how-to-use-it)
-- [Hardhat's full documentation](https://hardhat.org/docs/)
+Example of donating using `cast`:
 
-For a complete introduction to Hardhat, refer to [this guide](https://hardhat.org/getting-started/#overview).
+```
+cast send --private-key $PRIVATE_KEY $GOFUNDME_ADDRESS "donate(uint256)" 1000000000000000000 --rpc-url $ETH_RPC_URL
+```
 
-## What's Included?
+Replace `$GOFUNDME_ADDRESS` with the actual deployed contract address.
 
-This repository uses our recommended hardhat setup, by using our [`@nomicfoundation/hardhat-toolbox`](https://hardhat.org/hardhat-runner/plugins/nomicfoundation-hardhat-toolbox). When you use this plugin, you'll be able to:
+## Security Considerations
 
-- Deploy and interact with your contracts using [ethers.js](https://docs.ethers.io/v5/) and the [`hardhat-ethers`](https://hardhat.org/hardhat-runner/plugins/nomiclabs-hardhat-ethers) plugin.
-- Test your contracts with [Mocha](https://mochajs.org/), [Chai](https://chaijs.com/) and our own [Hardhat Chai Matchers](https://hardhat.org/hardhat-chai-matchers) plugin.
-- Interact with Hardhat Network with our [Hardhat Network Helpers](https://hardhat.org/hardhat-network-helpers).
-- Verify the source code of your contracts with the [hardhat-etherscan](https://hardhat.org/hardhat-runner/plugins/nomiclabs-hardhat-etherscan) plugin.
-- Get metrics on the gas used by your contracts with the [hardhat-gas-reporter](https://github.com/cgewecke/hardhat-gas-reporter) plugin.
-- Measure your tests coverage with [solidity-coverage](https://github.com/sc-forks/solidity-coverage).
+- Ensure proper access control for admin functions.
+- Thoroughly test all voting and fund distribution mechanisms.
+- Consider professional audits before mainnet deployment.
 
-This project also includes [a sample frontend/Dapp](./frontend), which uses [Create React App](https://github.com/facebook/create-react-app).
+## Contributing
 
-## Troubleshooting
+Contributions are welcome! Please fork the repository and create a pull request with your changes.
 
-- `Invalid nonce` errors: if you are seeing this error on the `npx hardhat node`
-  console, try resetting your Metamask account. This will reset the account's
-  transaction history and also the nonce. Open Metamask, click on your account
-  followed by `Settings > Advanced > Clear activity tab data`.
+## License
 
-## Setting up your editor
-
-[Hardhat for Visual Studio Code](https://hardhat.org/hardhat-vscode) is the official Hardhat extension that adds advanced support for Solidity to VSCode. If you use Visual Studio Code, give it a try!
-
-## Getting help and updates
-
-If you need help with this project, or with Hardhat in general, please read [this guide](https://hardhat.org/hardhat-runner/docs/guides/getting-help) to learn where and how to get it.
-
-For the latest news about Hardhat, [follow us on Twitter](https://twitter.com/HardhatHQ), and don't forget to star [our GitHub repository](https://github.com/NomicFoundation/hardhat)!
-
-**Happy _building_!**
+This project is licensed under the MIT License.
